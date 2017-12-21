@@ -78,8 +78,8 @@ int wmain()
     if (init_ntdll_func() == false) {
         return -1;
     }
-	wchar_t calcPath[MAX_PATH] = { 0 };
-	ExpandEnvironmentStringsW(L"%SystemRoot%\\system32\\calc.exe", calcPath, MAX_PATH);
+    wchar_t calcPath[MAX_PATH] = { 0 };
+    ExpandEnvironmentStringsW(L"%SystemRoot%\\system32\\calc.exe", calcPath, MAX_PATH);
 
     wchar_t my_name[MAX_PATH] = { 0 };
     GetModuleFileNameW(NULL, my_name, MAX_PATH);

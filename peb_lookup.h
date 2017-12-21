@@ -20,4 +20,4 @@ typedef struct _LDR_MODULE {
     ULONG   TimeDateStamp; 
 } LDR_MODULE, *PLDR_MODULE;
 
-LPVOID set_module_name(LPWSTR module_name);
+bool set_module_name(LPWSTR module_name);

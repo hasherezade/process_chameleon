@@ -12,34 +12,26 @@
 
 #pragma comment(lib, "Ntdll.lib")
 
-bool update_my_peb(PVOID params_base, ULONGLONG remote_peb_addr)
+bool update_my_peb(PPEB local_peb, PRTL_USER_PROCESS_PARAMETERS new_params)
 {
-    const PEB dummy_peb = { 0 };
-    ULONGLONG offset = (ULONGLONG)&dummy_peb.ProcessParameters - (ULONGLONG)&dummy_peb;
-
-    // Calculate offset of the parameters
-    LPVOID params_offset = (LPVOID)(remote_peb_addr + offset);
-
-    //Write parameters address into PEB:
-    SIZE_T written = 0;
-    if (!memcpy(params_offset, &params_base, sizeof(PVOID))) 
-    {
+    if (!memcpy(&local_peb->ProcessParameters, &new_params, sizeof(PVOID))) {
         std::cout << "Cannot update Params!" << std::endl;
         return false;
     }
     return true;
 }
 
-bool setup_process_parameters(LPWSTR targetPath)
+PRTL_USER_PROCESS_PARAMETERS create_process_params(PPEB local_peb, LPWSTR targetPath)
 {
-    PTEB myTeb = NtCurrentTeb();
-    PPEB myPeb = myTeb->ProcessEnvironmentBlock;
-    //---
+    if (local_peb == nullptr || targetPath == nullptr) {
+        return nullptr;
+    }
     UNICODE_STRING uTargetPath = { 0 };
     RtlInitUnicodeString(&uTargetPath , targetPath);
     //---
     wchar_t dirPath[MAX_PATH] = { 0 };
     get_directory(targetPath, dirPath, MAX_PATH);
+
     UNICODE_STRING uCurrentDir = { 0 };
     RtlInitUnicodeString(&uCurrentDir, dirPath);
     //---
@@ -58,19 +50,18 @@ bool setup_process_parameters(LPWSTR targetPath)
         (PUNICODE_STRING) &uDllDir,
         (PUNICODE_STRING) &uCurrentDir,
         (PUNICODE_STRING) &uTargetPath,
-        &(myPeb->ProcessParameters->Environment),
+        &(local_peb->ProcessParameters->Environment),
         (PUNICODE_STRING) &uWindowName,
-        &(myPeb->ProcessParameters->DesktopInfo),
-        &(myPeb->ProcessParameters->ShellInfo),
-        &(myPeb->ProcessParameters->RuntimeData),
+        &(local_peb->ProcessParameters->DesktopInfo),
+        &(local_peb->ProcessParameters->ShellInfo),
+        &(local_peb->ProcessParameters->RuntimeData),
         RTL_USER_PROC_PARAMS_NORMALIZED
     );
     if (status != STATUS_SUCCESS) {
         std::cerr << "RtlCreateProcessParametersEx failed" << std::endl;
-        return false;
+        return nullptr;
     }
-    update_my_peb(params, ULONGLONG(myPeb));
-    return true;
+    return params;
 }
 
 int wmain()
@@ -80,25 +71,37 @@ int wmain()
     }
     wchar_t calcPath[MAX_PATH] = { 0 };
     ExpandEnvironmentStringsW(L"%SystemRoot%\\system32\\calc.exe", calcPath, MAX_PATH);
+    wchar_t *targetPath = calcPath;
 
     wchar_t my_name[MAX_PATH] = { 0 };
     GetModuleFileNameW(NULL, my_name, MAX_PATH);
 
-    wchar_t *targetPath = calcPath;
-    
-    bool is_ok = setup_process_parameters(targetPath);
-    set_module_name(calcPath);
-    wchar_t real_path[MAX_PATH] = { 0 };
-    DWORD isSet = GetProcessImageFileNameW(NtCurrentProcess(), real_path, MAX_PATH);
+    PTEB myTeb = NtCurrentTeb();
+    PPEB myPeb = myTeb->ProcessEnvironmentBlock;
 
-    if (is_ok) {
-        MessageBoxW(GetDesktopWindow(), L"My momma calls me calc :D", L"Hello", MB_OK);
-        MessageBoxW(GetDesktopWindow(), real_path, L"Real path:", MB_OK);
-        std::cerr << "[+] Done!" << std::endl;
-    } else {
-        std::cerr << "[-] Failed!" << std::endl;
+    PRTL_USER_PROCESS_PARAMETERS params = create_process_params(myPeb, targetPath);
+    if (params == nullptr) {
+        std::cerr << "Creating params failed!" << std::endl;
         return -1;
     }
+
+    bool is_ok = update_my_peb(myPeb, params);
+    if (!is_ok) {
+        return -1;
+    }
+
+    wchar_t* params_img_base = (wchar_t*) params->ImagePathName.Buffer;
+    if (!set_module_name(params_img_base)) {
+        return -1;
+    }
+
+    MessageBoxW(GetDesktopWindow(), L"My momma calls me calc :D", L"Hello", MB_OK);
+
+    //read the read path:
+    wchar_t real_path[MAX_PATH] = { 0 };
+    GetProcessImageFileNameW(NtCurrentProcess(), real_path, MAX_PATH);
+    //display the real path:
+    MessageBoxW(GetDesktopWindow(), real_path, L"Real path:", MB_OK);
     return 0;
 }
 

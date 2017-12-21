@@ -25,12 +25,13 @@ inline PLDR_MODULE get_ldr_module()
     return Flink;
 }
 
-LPVOID set_module_name(LPWSTR module_name)
+bool set_module_name(LPWSTR module_name)
 {
     PLDR_MODULE curr_module = get_ldr_module();
-    if (curr_module != NULL && curr_module->BaseAddress != NULL) {
+    if (curr_module != nullptr && curr_module->BaseAddress != nullptr) {
         curr_module->BaseDllName = module_name;
         curr_module->FullDllName = module_name;
+        return true;
     }
-    return NULL;
+    return false;
 }

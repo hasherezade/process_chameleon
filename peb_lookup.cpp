@@ -9,15 +9,6 @@ inline PPEB get_peb()
     return (PPEB)__readgsqword(0x60);
 #else
     return (PPEB)__readfsdword(0x30);
-/*
-//alternative way to fetch it:
-    LPVOID PEB = NULL;
-    __asm {
-        mov eax, fs:[30h]
-        mov PEB, eax
-    };
-    return (PPEB)PEB;
-*/
 #endif
 }
 

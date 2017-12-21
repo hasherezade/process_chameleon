@@ -17,8 +17,9 @@ set (hdrs
 	ntddk.h
 	peb_lookup.h
 )
-IF(WIN32)
-SET(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} /subsystem:windows")
-ENDIF(WIN32)
+
+#IF(WIN32)
+#SET(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} /subsystem:windows")
+#ENDIF(WIN32)
 
 add_executable (lil_calc ${hdrs} ${srcs})

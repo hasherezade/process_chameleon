@@ -12,7 +12,8 @@
 
 #pragma comment(lib, "Ntdll.lib")
 
-bool update_my_peb(PPEB local_peb, PRTL_USER_PROCESS_PARAMETERS new_params)
+template <typename PEB_TYPE, typename PARAMS_TYPE>
+bool update_my_peb(PEB_TYPE local_peb, PARAMS_TYPE new_params)
 {
     if (!memcpy(&local_peb->ProcessParameters, &new_params, sizeof(PVOID))) {
         std::cout << "Cannot update Params!" << std::endl;
@@ -21,52 +22,64 @@ bool update_my_peb(PPEB local_peb, PRTL_USER_PROCESS_PARAMETERS new_params)
     return true;
 }
 
-PRTL_USER_PROCESS_PARAMETERS create_process_params(PPEB local_peb, LPWSTR targetPath)
+template <typename UNIC_STR_TYPE>
+bool setup_ustring(UNIC_STR_TYPE *uStr, wchar_t *wstr)
 {
-    if (local_peb == nullptr || targetPath == nullptr) {
-        return nullptr;
+    size_t wstr_len = wcslen(wstr);
+    size_t byte_len = wstr_len * 2;
+    if (byte_len > uStr->MaximumLength) {
+        std::cerr << "The input string is too long" << std::endl;
+        return false;
     }
-    UNICODE_STRING uTargetPath = { 0 };
-    RtlInitUnicodeString(&uTargetPath , targetPath);
-    //---
+    memset(uStr->Buffer, 0, uStr->MaximumLength);
+    memcpy(uStr->Buffer, wstr, byte_len);
+    uStr->Length = byte_len;
+    return true;
+}
+
+template <typename PARAMS_TYPE>
+bool overwrite_params(PARAMS_TYPE new_params, LPWSTR targetPath)
+{
+    if (!setup_ustring(&new_params->ImagePathName, targetPath)) return false;
+    if (!setup_ustring(&new_params->CommandLine, targetPath)) return false;
+
     wchar_t dirPath[MAX_PATH] = { 0 };
     get_directory(targetPath, dirPath, MAX_PATH);
+    if (!setup_ustring(&new_params->CurrentDirectory.DosPath, dirPath)) return false;
 
-    UNICODE_STRING uCurrentDir = { 0 };
-    RtlInitUnicodeString(&uCurrentDir, dirPath);
-    //---
-    wchar_t dllDir[] = L"C:\\Windows\\System32";
-    UNICODE_STRING uDllDir = { 0 };
-    RtlInitUnicodeString(&uDllDir, dllDir);
-    //---
-    UNICODE_STRING uWindowName = { 0 };
-    wchar_t *windowName = L"Process Transformation test!";
-    RtlInitUnicodeString(&uWindowName, windowName);
+    return true;
+}
 
-    PRTL_USER_PROCESS_PARAMETERS params  = nullptr;
-    NTSTATUS status = RtlCreateProcessParametersEx(
-        &params,
-        (PUNICODE_STRING) &uTargetPath,
-        (PUNICODE_STRING) &uDllDir,
-        (PUNICODE_STRING) &uCurrentDir,
-        (PUNICODE_STRING) &uTargetPath,
-        &(local_peb->ProcessParameters->Environment),
-        (PUNICODE_STRING) &uWindowName,
-        &(local_peb->ProcessParameters->DesktopInfo),
-        &(local_peb->ProcessParameters->ShellInfo),
-        &(local_peb->ProcessParameters->RuntimeData),
-        RTL_USER_PROC_PARAMS_NORMALIZED
+PPEB64 get_peb64(HANDLE hProcess, OUT PROCESS_BASIC_INFORMATION_WOW64 &pbi64)
+{
+    if (NtWow64QueryInformationProcess64 == nullptr) {
+        return false;
+    }
+    //reset structure:
+    memset(&pbi64,0, sizeof(PROCESS_BASIC_INFORMATION_WOW64));
+    
+    ULONG outLength = 0;
+    NTSTATUS status = NtWow64QueryInformationProcess64(
+        hProcess,
+        ProcessBasicInformation,
+        &pbi64,
+        sizeof(PROCESS_BASIC_INFORMATION_WOW64),
+        &outLength
     );
     if (status != STATUS_SUCCESS) {
-        std::cerr << "RtlCreateProcessParametersEx failed" << std::endl;
         return nullptr;
     }
-    return params;
+    return (PPEB64) pbi64.PebBaseAddress;
 }
 
 int wmain()
 {
-    if (init_ntdll_func() == false) {
+    BOOL isWow64 = FALSE;
+    IsWow64Process(GetCurrentProcess(), &isWow64);
+    std::cout << "IsWow64" << " : " << isWow64 << std::endl;
+
+    if (init_ntdll_func(isWow64) == false) {
+        printf("Cannot load functions!\n");
         return -1;
     }
     wchar_t calcPath[MAX_PATH] = { 0 };
@@ -76,20 +89,33 @@ int wmain()
     wchar_t my_name[MAX_PATH] = { 0 };
     GetModuleFileNameW(NULL, my_name, MAX_PATH);
 
+    PPEB64 pebWow64 = nullptr;
+    if (isWow64) {
+        PROCESS_BASIC_INFORMATION_WOW64 pbi64 = { 0 };
+        pebWow64 = get_peb64(GetCurrentProcess(), pbi64);
+        if (pebWow64 == nullptr) {
+            std::cerr << "Fetching PEB64 failed!" << std::endl;
+            return -1;
+        }
+        PRTL_USER_PROCESS_PARAMETERS64 params64 = pebWow64->ProcessParameters;
+        if (!overwrite_params<PRTL_USER_PROCESS_PARAMETERS64>(params64, targetPath)) {
+            return -1;
+        }
+        if (!update_my_peb(pebWow64, params64)) {
+            return -1;
+        }
+    }
+
     PTEB myTeb = NtCurrentTeb();
     PPEB myPeb = myTeb->ProcessEnvironmentBlock;
 
-    PRTL_USER_PROCESS_PARAMETERS params = create_process_params(myPeb, targetPath);
-    if (params == nullptr) {
-        std::cerr << "Creating params failed!" << std::endl;
+    PRTL_USER_PROCESS_PARAMETERS params = myPeb->ProcessParameters;
+    if (!overwrite_params<PRTL_USER_PROCESS_PARAMETERS>(params, targetPath)) {
         return -1;
     }
-
-    bool is_ok = update_my_peb(myPeb, params);
-    if (!is_ok) {
+    if (!update_my_peb(myPeb, params)) {
         return -1;
     }
-
     wchar_t* params_img_base = (wchar_t*) params->ImagePathName.Buffer;
     if (!set_module_name(params_img_base)) {
         return -1;

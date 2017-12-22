@@ -12,7 +12,8 @@
 
 #pragma comment(lib, "Ntdll.lib")
 
-bool update_my_peb(PPEB local_peb, PRTL_USER_PROCESS_PARAMETERS new_params)
+template <typename PEB_TYPE, typename PARAMS_TYPE>
+bool update_my_peb(PEB_TYPE local_peb, PARAMS_TYPE new_params)
 {
     if (!memcpy(&local_peb->ProcessParameters, &new_params, sizeof(PVOID))) {
         std::cout << "Cannot update Params!" << std::endl;
@@ -21,38 +22,54 @@ bool update_my_peb(PPEB local_peb, PRTL_USER_PROCESS_PARAMETERS new_params)
     return true;
 }
 
-bool setup_ustring(UNICODE_STRING *uStr, wchar_t *wstr)
+template <typename UNIC_STR_TYPE>
+bool setup_ustring(UNIC_STR_TYPE *uStr, wchar_t *wstr)
 {
     size_t wstr_len = wcslen(wstr);
-    size_t wLen = wstr_len * 2;
-    if (wstr_len > uStr->MaximumLength) {
+    size_t byte_len = wstr_len * 2;
+    if (byte_len > uStr->MaximumLength) {
         std::cerr << "The input string is too long" << std::endl;
         return false;
     }
-    std::wcout << "Target: " << (wchar_t*) wstr << std::endl;
-    std::wcout << "Buffer before: " << (wchar_t*) uStr->Buffer << std::endl;
-
-    memset(uStr->Buffer, 0, uStr->MaximumLength * sizeof(wchar_t));
-    
-    memcpy(uStr->Buffer, wstr, wLen);
-    std::wcout << "Buffer after: " << (wchar_t*) uStr->Buffer << std::endl;
-    uStr->Length = wLen;
+    memset(uStr->Buffer, 0, uStr->MaximumLength);
+    memcpy(uStr->Buffer, wstr, byte_len);
+    uStr->Length = byte_len;
     return true;
 }
 
-template <typename PEB_TYPE, typename PARAMS_TYPE>
-PARAMS_TYPE overwrite_params(PEB_TYPE local_peb, LPWSTR targetPath)
+template <typename PARAMS_TYPE>
+bool overwrite_params(PARAMS_TYPE new_params, LPWSTR targetPath)
 {
-    PARAMS_TYPE new_params = (PARAMS_TYPE) VirtualAlloc(nullptr,sizeof(RTL_USER_PROCESS_PARAMETERS), MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
-    if (!new_params) {
+    if (!setup_ustring(&new_params->ImagePathName, targetPath)) return false;
+    if (!setup_ustring(&new_params->CommandLine, targetPath)) return false;
+
+    wchar_t dirPath[MAX_PATH] = { 0 };
+    get_directory(targetPath, dirPath, MAX_PATH);
+    if (!setup_ustring(&new_params->CurrentDirectory.DosPath, dirPath)) return false;
+
+    return true;
+}
+
+PPEB64 get_peb64(HANDLE hProcess, OUT PROCESS_BASIC_INFORMATION_WOW64 &pbi64)
+{
+    if (NtWow64QueryInformationProcess64 == nullptr) {
+        return false;
+    }
+    //reset structure:
+    memset(&pbi64,0, sizeof(PROCESS_BASIC_INFORMATION_WOW64));
+    
+    ULONG outLength = 0;
+    NTSTATUS status = NtWow64QueryInformationProcess64(
+        hProcess,
+        ProcessBasicInformation,
+        &pbi64,
+        sizeof(PROCESS_BASIC_INFORMATION_WOW64),
+        &outLength
+    );
+    if (status != STATUS_SUCCESS) {
         return nullptr;
     }
-    PARAMS_TYPE params = local_peb->ProcessParameters;
-    memcpy(new_params,params, sizeof(RTL_USER_PROCESS_PARAMETERS));
-
-    if (!setup_ustring(&new_params->ImagePathName, targetPath)) return nullptr;
-    if (!setup_ustring(&new_params->CommandLine, targetPath)) return nullptr;
-    return new_params;
+    return (PPEB64) pbi64.PebBaseAddress;
 }
 
 int wmain()
@@ -72,15 +89,34 @@ int wmain()
     wchar_t my_name[MAX_PATH] = { 0 };
     GetModuleFileNameW(NULL, my_name, MAX_PATH);
 
+    PPEB64 pebWow64 = nullptr;
+    if (isWow64) {
+        PROCESS_BASIC_INFORMATION_WOW64 pbi64 = { 0 };
+        pebWow64 = get_peb64(GetCurrentProcess(), pbi64);
+        if (pebWow64 == nullptr) {
+            std::cerr << "Fetching PEB64 failed!" << std::endl;
+            return -1;
+        }
+        PRTL_USER_PROCESS_PARAMETERS64 params64 = pebWow64->ProcessParameters;
+        if (!overwrite_params<PRTL_USER_PROCESS_PARAMETERS64>(params64, targetPath)) {
+            return -1;
+        }
+        if (!update_my_peb(pebWow64, params64)) {
+            return -1;
+        }
+    }
+
     PTEB myTeb = NtCurrentTeb();
     PPEB myPeb = myTeb->ProcessEnvironmentBlock;
 
-    PRTL_USER_PROCESS_PARAMETERS params = overwrite_params<PPEB, PRTL_USER_PROCESS_PARAMETERS>(myPeb, targetPath);
-    bool is_ok = update_my_peb(myPeb, params);
-    if (!is_ok) {
+    PRTL_USER_PROCESS_PARAMETERS params = myPeb->ProcessParameters;
+    if (!overwrite_params<PRTL_USER_PROCESS_PARAMETERS>(params, targetPath)) {
         return -1;
     }
-    wchar_t* params_img_base = (wchar_t*) targetPath;
+    if (!update_my_peb(myPeb, params)) {
+        return -1;
+    }
+    wchar_t* params_img_base = (wchar_t*) params->ImagePathName.Buffer;
     if (!set_module_name(params_img_base)) {
         return -1;
     }

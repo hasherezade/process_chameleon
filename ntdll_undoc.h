@@ -23,14 +23,6 @@ typedef struct _UNICODE_STRING_WOW64 {
     PVOID64 Buffer;
 } UNICODE_STRING_WOW64;
 
-// PEB 64:
-typedef struct _PEB64 {
-    BYTE Reserved[16];
-    PVOID64 ImageBaseAddress;
-    PVOID64 LdrData;
-    PVOID64 ProcessParameters;
-} PEB64, *PPEB64;
-
 typedef struct _CURDIR64
 {
     UNICODE_STRING_WOW64 DosPath;
@@ -71,6 +63,14 @@ typedef struct _RTL_USER_PROCESS_PARAMETERS64
     RTL_DRIVE_LETTER_CURDIR CurrentDirectores[0x20];
     ULONG EnvironmentSize;
 } RTL_USER_PROCESS_PARAMETERS64, *PRTL_USER_PROCESS_PARAMETERS64;
+
+// PEB 64:
+typedef struct _PEB64 {
+    BYTE Reserved[16];
+    PVOID64 ImageBaseAddress;
+    PVOID64 LdrData;
+    PRTL_USER_PROCESS_PARAMETERS64 ProcessParameters;
+} PEB64, *PPEB64;
 
 //Functions:
 

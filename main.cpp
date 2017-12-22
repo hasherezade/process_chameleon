@@ -40,13 +40,14 @@ bool setup_ustring(UNICODE_STRING *uStr, wchar_t *wstr)
     return true;
 }
 
-PRTL_USER_PROCESS_PARAMETERS overwrite_params(PPEB local_peb, LPWSTR targetPath)
+template <typename PEB_TYPE, typename PARAMS_TYPE>
+PARAMS_TYPE overwrite_params(PEB_TYPE local_peb, LPWSTR targetPath)
 {
-    PRTL_USER_PROCESS_PARAMETERS new_params = (PRTL_USER_PROCESS_PARAMETERS) VirtualAlloc(nullptr,sizeof(RTL_USER_PROCESS_PARAMETERS), MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+    PARAMS_TYPE new_params = (PARAMS_TYPE) VirtualAlloc(nullptr,sizeof(RTL_USER_PROCESS_PARAMETERS), MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
     if (!new_params) {
         return nullptr;
     }
-    PRTL_USER_PROCESS_PARAMETERS params = local_peb->ProcessParameters;
+    PARAMS_TYPE params = local_peb->ProcessParameters;
     memcpy(new_params,params, sizeof(RTL_USER_PROCESS_PARAMETERS));
 
     if (!setup_ustring(&new_params->ImagePathName, targetPath)) return nullptr;
@@ -73,19 +74,8 @@ int wmain()
 
     PTEB myTeb = NtCurrentTeb();
     PPEB myPeb = myTeb->ProcessEnvironmentBlock;
-    /*
-    PRTL_USER_PROCESS_PARAMETERS params = create_process_params(myPeb, targetPath);
-    if (params == nullptr) {
-        std::cerr << "Creating params failed!" << std::endl;
-        return -1;
-    }
 
-    bool is_ok = update_my_peb(myPeb, params);
-    if (!is_ok) {
-        return -1;
-    }
-    */
-    PRTL_USER_PROCESS_PARAMETERS params = overwrite_params(myPeb, targetPath);
+    PRTL_USER_PROCESS_PARAMETERS params = overwrite_params<PPEB, PRTL_USER_PROCESS_PARAMETERS>(myPeb, targetPath);
     bool is_ok = update_my_peb(myPeb, params);
     if (!is_ok) {
         return -1;

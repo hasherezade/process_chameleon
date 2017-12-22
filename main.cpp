@@ -123,7 +123,7 @@ int wmain()
 
     MessageBoxW(GetDesktopWindow(), L"My momma calls me calc :D", L"Hello", MB_OK);
 
-    //read the read path:
+    //read the real path:
     wchar_t real_path[MAX_PATH] = { 0 };
     GetProcessImageFileNameW(NtCurrentProcess(), real_path, MAX_PATH);
     //display the real path:

@@ -2708,7 +2708,7 @@ typedef struct _PEB
     PRTL_USER_PROCESS_PARAMETERS ProcessParameters;
     PVOID SubSystemData;
     PVOID ProcessHeap;
-    PVOID FastPebLock;
+    PRTL_CRITICAL_SECTION FastPebLock;
     PVOID FastPebLockRoutine;
     PVOID FastPebUnlockRoutine;
     ULONG EnvironmentUpdateCount;

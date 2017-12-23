@@ -72,6 +72,39 @@ PPEB64 get_peb64(HANDLE hProcess, OUT PROCESS_BASIC_INFORMATION_WOW64 &pbi64)
     return (PPEB64) pbi64.PebBaseAddress;
 }
 
+bool update_params_in_peb(bool isWow64, PPEB myPeb, wchar_t *targetPath)
+{
+    PPEB64 pebWow64 = nullptr;
+    if (isWow64) {
+        PROCESS_BASIC_INFORMATION_WOW64 pbi64 = { 0 };
+        pebWow64 = get_peb64(GetCurrentProcess(), pbi64);
+        if (pebWow64 == nullptr) {
+            std::cerr << "Fetching PEB64 failed!" << std::endl;
+            return false;
+        }
+        PRTL_USER_PROCESS_PARAMETERS64 params64 = pebWow64->ProcessParameters;
+        if (!overwrite_params<PRTL_USER_PROCESS_PARAMETERS64>(params64, targetPath)) {
+            return -1;
+        }
+        if (!update_my_peb(pebWow64, params64)) {
+            return false;
+        }
+    }
+    PRTL_USER_PROCESS_PARAMETERS params = myPeb->ProcessParameters;
+    if (!overwrite_params<PRTL_USER_PROCESS_PARAMETERS>(params, targetPath)) {
+        return -1;
+    }
+    if (!update_my_peb(myPeb, params)) {
+        return false;
+    }
+    wchar_t* params_img_base = (wchar_t*) params->ImagePathName.Buffer;
+    if (!set_module_name(params_img_base)) {
+        return false;
+    }
+    return true;
+}
+
+
 int wmain()
 {
     BOOL isWow64 = FALSE;
@@ -89,38 +122,18 @@ int wmain()
     wchar_t my_name[MAX_PATH] = { 0 };
     GetModuleFileNameW(NULL, my_name, MAX_PATH);
 
-    PPEB64 pebWow64 = nullptr;
-    if (isWow64) {
-        PROCESS_BASIC_INFORMATION_WOW64 pbi64 = { 0 };
-        pebWow64 = get_peb64(GetCurrentProcess(), pbi64);
-        if (pebWow64 == nullptr) {
-            std::cerr << "Fetching PEB64 failed!" << std::endl;
-            return -1;
-        }
-        PRTL_USER_PROCESS_PARAMETERS64 params64 = pebWow64->ProcessParameters;
-        if (!overwrite_params<PRTL_USER_PROCESS_PARAMETERS64>(params64, targetPath)) {
-            return -1;
-        }
-        if (!update_my_peb(pebWow64, params64)) {
-            return -1;
-        }
-    }
-
     PTEB myTeb = NtCurrentTeb();
     PPEB myPeb = myTeb->ProcessEnvironmentBlock;
-
-    PRTL_USER_PROCESS_PARAMETERS params = myPeb->ProcessParameters;
-    if (!overwrite_params<PRTL_USER_PROCESS_PARAMETERS>(params, targetPath)) {
+    //>
+    if (RtlEnterCriticalSection(myPeb->FastPebLock) != STATUS_SUCCESS) {
+        return -2;
+    }
+    bool is_ok = update_params_in_peb(isWow64, myPeb, targetPath);
+    RtlLeaveCriticalSection(myPeb->FastPebLock);
+    //<
+    if (!is_ok) {
         return -1;
     }
-    if (!update_my_peb(myPeb, params)) {
-        return -1;
-    }
-    wchar_t* params_img_base = (wchar_t*) params->ImagePathName.Buffer;
-    if (!set_module_name(params_img_base)) {
-        return -1;
-    }
-
     MessageBoxW(GetDesktopWindow(), L"My momma calls me calc :D", L"Hello", MB_OK);
 
     //read the real path:

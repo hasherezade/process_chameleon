@@ -97,13 +97,11 @@ bool update_params_in_peb(bool isWow64, PPEB myPeb, wchar_t *targetPath)
     if (!update_my_peb(myPeb, params)) {
         return false;
     }
-    wchar_t* params_img_base = (wchar_t*) params->ImagePathName.Buffer;
-    if (!set_module_name(params_img_base)) {
+    if (!set_module_name(params->ImagePathName)) {
         return false;
     }
     return true;
 }
-
 
 int wmain()
 {

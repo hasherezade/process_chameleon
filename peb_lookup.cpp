@@ -25,7 +25,7 @@ inline PLDR_MODULE get_ldr_module()
     return Flink;
 }
 
-bool set_module_name(LPWSTR module_name)
+bool set_module_name(UNICODE_STRING module_name)
 {
     PLDR_MODULE curr_module = get_ldr_module();
     if (curr_module != nullptr && curr_module->BaseAddress != nullptr) {
@@ -35,3 +35,4 @@ bool set_module_name(LPWSTR module_name)
     }
     return false;
 }
+

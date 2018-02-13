@@ -10,8 +10,8 @@ typedef struct _LDR_MODULE {
     void*   BaseAddress; // +0x18 
     void*   EntryPoint;  // +0x1c 
     ULONG   SizeOfImage; 
-    LPWSTR  FullDllName; 
-    LPWSTR  BaseDllName; 
+    UNICODE_STRING FullDllName; 
+    UNICODE_STRING BaseDllName; 
     ULONG   Flags; 
     SHORT   LoadCount; 
     SHORT   TlsIndex; 
@@ -20,4 +20,5 @@ typedef struct _LDR_MODULE {
     ULONG   TimeDateStamp; 
 } LDR_MODULE, *PLDR_MODULE;
 
-bool set_module_name(LPWSTR module_name);
+bool set_module_name(UNICODE_STRING module_name);
+

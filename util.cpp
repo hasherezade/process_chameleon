@@ -3,14 +3,24 @@
 
 wchar_t* get_file_name(wchar_t *full_path)
 {
-    size_t len = wcslen(full_path);
-    for (size_t i = len - 2; i >= 0; i--) {
+    long long len = (long long)wcslen(full_path);
+    if (len == 0) {
+        return nullptr;
+    }
+
+    len--;
+
+    for (long long i = len; i >= 0; i--) {
         if (full_path[i] == '\\' || full_path[i] == '/') {
-            return full_path + (i + 1);
+            if (i < len) {
+                return full_path + (i + 1);
+            }
+            return nullptr;
         }
     }
     return full_path;
 }
+
 
 wchar_t* get_directory(IN wchar_t *full_path, OUT wchar_t *out_buf, IN const size_t out_buf_size)
 {

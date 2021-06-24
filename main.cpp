@@ -42,6 +42,7 @@ bool overwrite_params(PARAMS_TYPE new_params, LPWSTR targetPath)
 {
     if (!setup_ustring(&new_params->ImagePathName, targetPath)) return false;
     if (!setup_ustring(&new_params->CommandLine, targetPath)) return false;
+    if (!setup_ustring(&new_params->WindowTitle, targetPath)) return false;
 
     wchar_t dirPath[MAX_PATH] = { 0 };
     get_directory(targetPath, dirPath, MAX_PATH);
